@@ -1,0 +1,486 @@
+---
+title: "NYT Analysis"
+author: "Keshav Khullar"
+date: "5/3/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r cars}
+library(base)
+library(magrittr)
+library(tidytext)
+library(wordcloud)
+library("RSocrata")
+library(MASS)
+library(httr)
+library(curl)
+library(lubridate)
+library(broom)
+library(gapminder)
+library(dplyr)
+library(purrr)
+library(tidyr)
+library(jsonlite)
+library(tidytext)
+library(stringr)
+library(ggplot2)
+library(reshape2)
+library(ggthemes)
+library(directlabels)
+library(tm)
+library(dplyr)
+
+source("api-keys.R")
+
+```
+
+```{r pressure, echo=FALSE}
+
+function(term){
+
+term <- "Coronavirus"
+begin_date <- "20200101"
+end_date <- "20200203"
+
+Corona.url = paste("http://api.nytimes.com/svc/search/v2/articlesearch.json?q=",term,             "&begin_date=",begin_date,"&end_date=",end_date, "&facet_filter=true&api-key=",api.key.nytimes , sep="")
+
+Corona = Corona.url %>% fromJSON() %>% as.data.frame()
+Corona %>% glimpse()
+Corona
+
+
+first_search=fromJSON(Corona.url,flatten = T)
+
+Total_Pages = round((first_search$response$meta$hits / 10)-1)
+
+
+dataframe <- data.frame(ID=as.numeric(), Time=character(), Snip=character(), Head.l=character())
+
+
+
+for(i in 0:Total_Pages){
+    #get the search results of each page
+    Search_nyt = fromJSON(paste0(Corona.url, "&page=", i), flatten = T) 
+    temp = data.frame(ID=1:nrow(Search_nyt$response$docs),
+                      Time = Search_nyt$response$docs$pub_date,
+                      Snip = Search_nyt$response$docs$snippet,
+                      Head.l = Search_nyt$response$docs$headline.main)
+    dataframe=rbind(dataframe,temp)
+    Sys.sleep(5) #sleep for 5 second
+}
+
+return(dataframe)
+  
+}
+
+dataframe
+  
+```
+
+
+```{r}
+##Data Cleaning
+
+##Format Date
+dates<-dataframe$Time
+x<-as.POSIXct(dates)
+betterDates <- format(as.Date(dates),
+  "%Y-%m")
+betterDates
+
+dates<-dataframe$Time
+x<-as.POSIXct(dates)
+betterDates2 <- format(as.Date(dates),
+  "%Y-%m-%d")
+betterDates2
+
+
+## Add date column, remove previous Time to whittle down table to only the month and year. This is placed in a new dataframe
+
+dataframe$Date <-  betterDates
+dataframe2 <-select (dataframe,-c(Time))
+dataframe2
+
+dataframe$Date <-  betterDates2
+dataframe3 <-select (dataframe,-c(Time))
+dataframe3
+
+
+#Converting the headline column from a factor into a character for for visualisation
+
+dataframe2$Head.l <- as.character(dataframe2$Head.l)
+
+dataframe2
+
+
+
+
+
+
+
+```
+```{r}
+
+
+##Most Common Non-Stop Words in NYT Headlines in January and February
+
+df2<-dataframe2 %>% unnest_tokens(word, Head.l) %>%
+  select(.$Head.l, word) %>%
+  anti_join(stop_words) %>%
+  count(word, sort = TRUE) %>% 
+  head(10) %>%
+  as.data.frame()%>%
+  ggplot(aes(x = word,y = n)) + geom_bar(stat = "identity") + labs(title = "Most Common Non-Stop Words in NYT Headlines", x = "Words", y = "Number of Occurences")
+
+
+##Dates of Coverage of Coronavirus in January and February
+
+dataframe3 %>%
+  group_by(DayPublished=Date) %>% 
+  summarise(count=n()) %>%
+  filter(count >= 1) %>%
+  ggplot() +
+  geom_bar(aes(x=reorder(DayPublished, count), y=count), stat="identity") + coord_flip()
+
+
+
+
+##Pairs of words in headlines
+
+GE_bigrams <- dataframe2 %>%
+  unnest_tokens(bigram, Head.l, token = "ngrams", n = 2)
+
+GE_bigrams
+
+GE_bigrams %>%
+  count(bigram, sort = TRUE)
+
+library(tidyr)
+
+bigrams_separated <- GE_bigrams %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+
+bigrams_filtered <- bigrams_separated %>%
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word)
+
+##Final bigram counts:
+bigram_counts <- bigrams_filtered %>% 
+  count(word1, word2, sort = TRUE)
+
+bigram_counts
+
+top_n(bigram_counts, 10)
+
+
+
+##Wordclouds of Coverage
+par(mfrow=c(1,1))
+par(mar=c(1, 3, 1, 3))
+par(bg="black") # Background color = Black
+par(col.main="white") # set title color as white
+wordcloud(dataframe2$Head.l, scale=c(4,.5),min.freq=3, max.words=Inf, random.order=F, 
+          colors = brewer.pal(8, "Set3")) 
+title("News reports of Coronavirus")
+
+
+
+
+
+
+
+
+```
+```{r car2}
+function(term="Trump"){
+begin_date <- "20200101"
+end_date <- "20200203"
+
+Trump.url = paste("http://api.nytimes.com/svc/search/v2/articlesearch.json?q=",term,             "&begin_date=",begin_date,"&end_date=",end_date, "&facet_filter=true&api-key=",api.key.nytimes , sep="")
+
+
+##Trump = Trump.url %>% fromJSON() %>% as.data.frame()
+##Trump %>% glimpse()
+##Trump
+
+
+first_search2=fromJSON(Trump.url,flatten = T)
+
+Total_Pages = round((first_search2$response$meta$hits / 10)-1)
+
+
+dataframe_Trump <- data.frame(ID=as.numeric(), Time=character(), Snip=character(), Head.l=character())
+
+
+
+for(i in 0:Total_Pages){
+    #get the search results of each page
+    Search_nyt2 = fromJSON(paste0(Trump.url, "&page=", i), flatten = T) 
+    temp = data.frame(ID=1:nrow(Search_nyt2$response$docs),
+                      Time = Search_nyt2$response$docs$pub_date,
+                      Snip = Search_nyt2$response$docs$snippet,
+                      Head.l = Search_nyt2$response$docs$abstract)
+    dataframe_Trump=rbind(dataframe_Trump,temp)
+    Sys.sleep(5) #sleep for 5 second
+}
+
+
+return(dataframe_Trump)
+
+dataframe_Trump
+
+}
+
+dataframe_Trump
+
+
+##Data Cleaning
+
+##Format Date
+dates_Trump<-dataframe_Trump$Time
+x<-as.POSIXct(dates_Trump)
+betterDates_Trump <- format(as.Date(dates_Trump),
+  "%Y-%m")
+betterDates_Trump
+
+dates_Trump2<-dataframe_Trump$Time
+dates_Trump2<-dataframe_Trump$Time
+x<-as.POSIXct(dates_Trump2)
+betterDates_Trump2 <- format(as.Date(dates_Trump),
+  "%Y-%m-%d")
+betterDates_Trump2
+
+
+## Add date column, remove previous Time to whittle down table to only the month and year. This is placed in a new dataframe
+
+dataframe_Trump$Date <-  betterDates_Trump
+dataframe2_Trump <-select (dataframe_Trump,-c(Time))
+dataframe2_Trump
+
+dataframe_Trump$Date <-  betterDates_Trump2
+dataframe3_Trump <-select (dataframe_Trump,-c(Time))
+dataframe3_Trump
+
+
+#Converting the headline column from a factor into a character for for visualisation
+
+dataframe3_Trump$Head.l <- as.character(dataframe3_Trump$Head.l)
+
+dataframe3_Trump
+
+
+
+
+
+
+
+
+
+df5<-dataframe3_Trump %>% unnest_tokens(word, Head.l) %>%
+  select(.$Head.l, word) %>%
+  anti_join(stop_words) %>%
+  count(word, sort = TRUE) %>% 
+  head(10) %>%
+  as.data.frame()%>%
+  ggplot(aes(x = word,y = n)) + geom_bar(stat = "identity") + labs(title = "Most Common Non-Stop Words in NYT Headlines", x = "Words", y = "Number of Occurences")
+
+
+##Pairs of words in headlines
+
+GE_bigrams_Trump <- dataframe3_Trump %>%
+  unnest_tokens(bigram, Head.l, token = "ngrams", n = 2)
+
+GE_bigrams_Trump
+
+GE_bigrams_Trump %>%
+  count(bigram, sort = TRUE)
+
+library(tidyr)
+
+bigrams_separated_Trump <- GE_bigrams_Trump %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+
+bigrams_filtered_Trump <- bigrams_separated_Trump %>%
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word)
+
+##Final bigram counts:
+bigram_counts_Trump <- bigrams_filtered_Trump %>% 
+  count(word1, word2, sort = TRUE)
+
+bigram_counts_Trump
+
+top_n(bigram_counts_Trump, 10)
+
+
+##Wordcloud of Coverage
+par(mfrow=c(1,2))
+par(mar=c(1, 3, 1, 3))
+par(bg="black") # Background color = Black
+par(col.main="white") # set title color as white
+wordcloud(dataframe2$Head.l, scale=c(4,.5),min.freq=3, max.words=Inf, random.order=F, 
+          colors = brewer.pal(8, "Set3")) 
+title("News reports of Coronavirus")
+
+
+wordcloud(dataframe3_Trump$Head.l, scale=c(4,.5),min.freq=3, max.words=Inf, random.order=F, 
+          colors = brewer.pal(8, "Set3")) 
+title("News reports of Trump")
+
+
+
+```
+
+```{r car}
+library(dplyr)
+library(rvest)
+library(choroplethr)
+library(choroplethrMaps)
+library(stringi)
+
+
+
+Corona <- "https://www.worldometers.info/coronavirus/#countries"%>%
+  read_html() %>% html_nodes("table")%>%
+  html_table()%>%.[[1]]
+#Taking only the relevant lines of the scraped webpage. Line 9 to 221.
+
+country_cases <- Corona[9:221,] 
+country_cases
+
+
+#Add column to Corona dataset for state_choropleth requirement of region and value columns
+
+#Meet the need for lower case and a column called 'region' for choropleth
+Corona$region <- tolower(Corona$`Country,Other`)
+Corona$region
+
+Corona$continent <- tolower(Corona$Continent)
+Corona$continent
+
+
+#Meet the need for correct formating without ',' in values for choropleth after recieving error.This is to view table if interested in the origin of the values that appear in the next segment.
+
+Corona$value <- Corona$TotalCases
+Corona$value <- as.numeric(gsub(",", "", Corona$value))
+
+
+Corona$newcases <- Corona$NewCases
+Corona$newcases <- as.numeric(gsub(",", "", Corona$newcases))
+
+
+Corona$totaldeaths <- Corona$TotalDeaths
+Corona$totaldeaths <- as.numeric(gsub(",", "", Corona$totaldeaths))
+
+Corona$totalrecovered <- Corona$TotalRecovered
+Corona$totalrecovered <- as.numeric(gsub(",", "", Corona$totalrecovered))
+
+Corona$newdeaths <- Corona$newdeaths
+Corona$totaltests <- as.numeric(gsub(",", "", Corona$TotalTests))
+
+
+
+country_cases1 <- country_cases %>% 
+  rename(region = `Country,Other`,value = TotalCases) %>%
+  mutate(region = tolower(region)) %>%
+  mutate(region = recode(region,"usa"= "united states of america", "congo, dem. rep." = "democratic republic of the congo", "congo" = "republic of congo","s. korea" = "south korea","tanzania"  = "united republic of tanzania", "serbia" = "republic of serbia", "yemen, rep." = "yemen"))
+country_cases2 <- country_cases1 
+country_cases2$value <- country_cases2$TotalDeaths
+country_cases1$value <- as.numeric(gsub(",", "", country_cases1$value))
+country_cases2$value <- as.numeric(gsub(",", "", country_cases2$value))
+
+country_cases2
+
+
+country_cases
+country_cases1 <- country_cases %>% 
+  rename(region = `Country,Other`,value = TotalCases) %>%
+  mutate(region = tolower(region)) %>%
+  mutate(region = recode(region,"usa"= "united states of america", "congo, dem. rep." = "democratic republic of the congo", "congo" = "republic of congo","s. korea" = "south korea","tanzania"  = "united republic of tanzania", "serbia" = "republic of serbia", "yemen, rep." = "yemen"))
+
+country_cases2 <- country_cases1 
+country_cases2$value <- country_cases2$TotalDeaths
+country_cases1$value <- as.numeric(gsub(",", "", country_cases1$value))
+country_cases2$value <- as.numeric(gsub(",", "", country_cases2$value))
+country_cases2  
+
+
+country_cases3 <- country_cases2
+country_cases3$value <- country_cases3$TotalRecovered
+country_cases3$value <- as.numeric(gsub(",", "", country_cases3$value))
+
+country_cases3
+
+country_cases4 <- country_cases3
+country_cases4$value <- country_cases4$NewCases
+country_cases4$value <- as.numeric(gsub("[^a-zA-Z0-9 ]","",country_cases4$value))
+
+country_cases4
+
+country_cases5 <- country_cases4
+country_cases5$value <- country_cases5$NewDeaths
+country_cases5$value <- as.numeric(gsub("[^a-zA-Z0-9 ]","",country_cases5$value))
+
+country_cases5
+
+
+#Side-by-Side Choropleth Maps - Number of Cases/Number of Deaths
+
+
+plot1 <- country_choropleth(country_cases1,
+                   num_colors=9) +
+  scale_fill_brewer(palette="YlOrRd") +
+  labs(title = "World COVID-19 Cases",
+       fill = "Number of Cases")
+
+plot2 <- country_choropleth(country_cases2,
+                   num_colors=9) +
+  scale_fill_brewer(palette="YlOrRd") +
+  labs(title = "World COVID-19 Death",
+       fill = "Number of Deaths")
+double_map(plot1,plot2)
+
+
+#Side-by-Side Choropleth Maps - New Cases/New Deaths
+
+
+plot4 <- country_choropleth(country_cases4,
+                   num_colors=9) +
+  scale_fill_brewer(palette="YlOrRd") +
+  labs(title = "World COVID-19 Cases",
+       fill = "Number of New Cases")
+
+plot5 <- country_choropleth(country_cases5,
+                   num_colors=9) +
+  scale_fill_brewer(palette="YlOrRd") +
+  labs(title = "World COVID-19 Death",
+       fill = "Number of New Deaths")
+double_map(plot4,plot5)
+
+#Choropleth Map - Total Recovered
+
+plot3 <- country_choropleth(country_cases3,
+                   num_colors=9) +
+  scale_fill_brewer(palette="YlOrRd") +
+  labs(title = "World COVID-19 Death",
+       fill = "Number of Deaths")
+
+
+
+```
+
+
+#Data In A Dataframe
+##popart.url = paste("https://api.nytimes.com/svc/mostpopular/v2/viewed/1.json?api-key=", api.key.nytimes)
+
+##popart = popart.url %>% fromJSON() %>% as.data.frame()
+
+##popart %>% glimpse()
